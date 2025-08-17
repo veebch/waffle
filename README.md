@@ -1,2 +1,3 @@
-# waffle
-the things that made up the waffle video
+# Waffle
+
+A collection of things that make up the waffle video
