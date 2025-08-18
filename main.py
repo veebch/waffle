@@ -1,15 +1,14 @@
-import machine, neopixel, time, random
+pimport machine, neopixel, time, random, math
 
 NUM_LEDS = 144
 PIN_NUM = 0
 np = neopixel.NeoPixel(machine.Pin(PIN_NUM), NUM_LEDS)
 
-BLOCK_SIZE = 12
+BLOCK_SIZE = 48
 positions = [0, NUM_LEDS//3, 2*NUM_LEDS//3]  # centers for RGB blocks
 colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
 
 speed = 0.01       # seconds per frame
-step_fraction = 0.0
 frac_positions = [float(p) for p in positions]
 
 # === Randomized white buildup ===
@@ -57,12 +56,18 @@ for step in range(shrink_steps + 1):
 # === Ensure final positions match movement phase ===
 frac_positions = [float(p) for p in positions]
 
-# === Main moving blocks ===
-ease_in = 0.0
-while True:
+# === Main moving blocks with ease-in/out ===
+t = 0.0
+T = 400      # total frames for full ease-in+ease-out
+MAX_SPEED = 2.0  # peak step size
+
+while t <= T:
+    # smooth ease in/out curve (0 -> 2 -> 0)
+    step_fraction = MAX_SPEED * math.sin(math.pi * (t/T))
+
     set_block_points(frac_positions, colors, BLOCK_SIZE)
     frac_positions = [(p + step_fraction) % NUM_LEDS for p in frac_positions]
     time.sleep(speed)
-    ease_in = min(ease_in + 0.01, 1.5)
-    step_fraction = ease_in * ease_in
+
+    t += 1
 
