@@ -1,15 +1,16 @@
-pimport machine, neopixel, time, random, math
+import machine, neopixel, time, random, math
 
 NUM_LEDS = 144
 PIN_NUM = 0
 np = neopixel.NeoPixel(machine.Pin(PIN_NUM), NUM_LEDS)
 
-BLOCK_SIZE = 48
-positions = [0, NUM_LEDS//3, 2*NUM_LEDS//3]  # centers for RGB blocks
-colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
+BLOCK_SIZE = 36
+# Single position for the white block
+position = 0
+color = (255, 255, 255)  # White color
 
 speed = 0.01       # seconds per frame
-frac_positions = [float(p) for p in positions]
+frac_position = float(position)
 
 # === Randomized white buildup ===
 led_indices = list(range(NUM_LEDS))
@@ -22,52 +23,67 @@ for idx in led_indices:
     np.write()
     # time.sleep(speed)
 
-# === Helper to draw blocks (movement phase) ===
-def set_block_points(frac_positions, colors, block_size=12):
+# === Helper to draw a single block ===
+def set_block_point(frac_position, color, block_size=12):
     np.fill((0,0,0))
-    for pos, color in zip(frac_positions, colors):
-        center = int(round(pos))  # center LED index
-        start = (center - block_size//2) % NUM_LEDS
-        for offset in range(block_size):
-            led = (start + offset) % NUM_LEDS
-            np[led] = color
+    center = int(round(frac_position))
+    start = (center - block_size//2) % NUM_LEDS
+    for offset in range(block_size):
+        led = (start + offset) % NUM_LEDS
+        np[led] = color
     np.write()
 
-# === Shrinking phase ===
+# === Shrinking phase (full width to BLOCK_SIZE) ===
 MAX_WIDTH = NUM_LEDS
-shrink_steps = (MAX_WIDTH - BLOCK_SIZE) // 2  # symmetric shrink
+shrink_steps = (MAX_WIDTH - BLOCK_SIZE) // 2
 
 for step in range(shrink_steps + 1):
     np.fill((0,0,0))
     width = MAX_WIDTH - 2*step
-    for cidx, color in enumerate(colors):
-        center = positions[cidx]
-        start = (center - width//2) % NUM_LEDS
-        for i in range(width):
-            led = (start + i) % NUM_LEDS
-            # additive blend so colors don’t overwrite
-            r, g, b = np[led]
-            np[led] = (min(r+color[0],255),
-                       min(g+color[1],255),
-                       min(b+color[2],255))
+    center = position
+    start = (center - width//2) % NUM_LEDS
+    for i in range(width):
+        led = (start + i) % NUM_LEDS
+        r, g, b = np[led]
+        # Add white color
+        np[led] = (min(r+color[0],255),
+                   min(g+color[1],255),
+                   min(b+color[2],255))
     np.write()
     time.sleep(speed)
 
-# === Ensure final positions match movement phase ===
-frac_positions = [float(p) for p in positions]
+# === Movement with ease-in/out ===
+TOTAL_FRAMES = 400
+MAX_SPEED = 2.0  # peak LED/frame
 
-# === Main moving blocks with ease-in/out ===
-t = 0.0
-T = 400      # total frames for full ease-in+ease-out
-MAX_SPEED = 2.0  # peak step size
-
-while t <= T:
-    # smooth ease in/out curve (0 -> 2 -> 0)
-    step_fraction = MAX_SPEED * math.sin(math.pi * (t/T))
-
-    set_block_points(frac_positions, colors, BLOCK_SIZE)
-    frac_positions = [(p + step_fraction) % NUM_LEDS for p in frac_positions]
+for t in range(TOTAL_FRAMES + 1):
+    step_fraction = MAX_SPEED * math.sin(math.pi * (t/TOTAL_FRAMES))
+    set_block_point(frac_position, color, BLOCK_SIZE)
+    frac_position = (frac_position + step_fraction) % NUM_LEDS
     time.sleep(speed)
 
-    t += 1
+# === Reverse shrinking / spread back to white ===
+final_position = frac_position  # capture final position
 
+for step in range(shrink_steps, -1, -1):
+    np.fill((0,0,0))
+    width = MAX_WIDTH - 2*step
+    center = final_position
+    start = (int(center) - width//2) % NUM_LEDS
+    for i in range(width):
+        led = (start + i) % NUM_LEDS
+        r, g, b = np[led]
+        # Add white color
+        np[led] = (min(r+color[0],255),
+                   min(g+color[1],255),
+                   min(b+color[2],255))
+    np.write()
+    time.sleep(speed)
+time.sleep(5)
+# === Fade white to off ===
+FADE_STEPS = 200
+for step in range(FADE_STEPS + 1):
+    brightness = int(255 * (1 - step/FADE_STEPS))
+    np.fill((brightness, brightness, brightness))
+    np.write()
+    time.sleep(speed)
